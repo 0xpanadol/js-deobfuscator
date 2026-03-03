@@ -6,7 +6,10 @@ import { constMemberExpression } from '../../ast-utils'
 // https://github.com/babel/babel/pull/5791
 // https://github.com/babel/babel/blob/cce807f1eb638ee3030112dc190cbee032760888/packages/babel-plugin-transform-template-literals/src/index.ts
 
-// TODO: option ignoreToPrimitiveHint (uses `+` instead of concat)
+interface TemplateLiteralsOptions {
+  /** When true, uses `+` concatenation instead of `.concat()` for primitives */
+  ignoreToPrimitiveHint?: boolean
+}
 
 function escape(str: string) {
   return (
@@ -57,6 +60,8 @@ export default {
   name: 'template-literals',
   tags: ['unsafe'],
   visitor() {
+    // ignoreToPrimitiveHint: when true, uses `+` concatenation for string + expression patterns
+    const ignoreToPrimitiveHint = false
     const string = m.capture(m.or(m.stringLiteral(), m.templateLiteral()))
     const concatMatcher = m.callExpression(
       constMemberExpression(string, 'concat'),
@@ -68,6 +73,9 @@ export default {
         exit(path) {
           if (path.node.operator !== '+') return
 
+          // When ignoreToPrimitiveHint is false (default), only convert when
+          // at least one side is already a template literal (safe).
+          // When true, also convert string + expression patterns.
           if (t.isTemplateLiteral(path.node.left)) {
             push(path.node.left, path.node.right)
             path.replaceWith(path.node.left)
@@ -79,6 +87,20 @@ export default {
           ) {
             unshift(path.node.right, path.node.left)
             path.replaceWith(path.node.right)
+            this.changes++
+          }
+          else if (
+            ignoreToPrimitiveHint
+            && t.isStringLiteral(path.node.left)
+            && t.isExpression(path.node.right)
+          ) {
+            const template = t.templateLiteral(
+              [t.templateElement({ raw: '' })],
+              [],
+            )
+            push(template, path.node.left)
+            push(template, path.node.right)
+            path.replaceWith(template)
             this.changes++
           }
         },

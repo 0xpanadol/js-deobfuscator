@@ -53,21 +53,23 @@ export function parseCode(code: string): ParseResult<t.File> {
   })
 }
 
-// TODO: Error output handling, locate code position
-function _handleError(error: any, rawCode: string) {
-  if (error instanceof SyntaxError) {
-    const codeFrame = codeFrameColumns(rawCode, {
-      start: {
-        line: (error as any).loc.line,
-        column: (error as any).loc.column + 1,
-      },
-    }, {
-      highlightCode: true,
-      message: error.message,
-    })
 
-    console.error(codeFrame)
+function handleError(error: any, rawCode: string, stageName?: string) {
+  const prefix = stageName ? `[${stageName}] ` : ''
+  if (error instanceof SyntaxError) {
+    const loc = (error as any).loc
+    if (loc) {
+      const codeFrame = codeFrameColumns(rawCode, {
+        start: { line: loc.line, column: loc.column + 1 },
+      }, {
+        highlightCode: true,
+        message: `${prefix}${error.message}`,
+      })
+      return new Error(`${prefix}SyntaxError at line ${loc.line}:${loc.column}\n${codeFrame}`)
+    }
   }
+  const msg = error instanceof Error ? error.message : String(error)
+  return new Error(`${prefix}${msg}`)
 }
 
 function buildDecryptionSummaryLog(map: Map<string, string>) {
@@ -85,9 +87,17 @@ function buildDecryptionSummaryLog(map: Map<string, string>) {
   ].join('\n')
 }
 
+interface Stage {
+  name: string
+  key: string
+  fn: () => unknown | Promise<unknown>
+}
+
 export async function deob(rawCode: string, options: Options = {}): Promise<DeobResult> {
   mergeOptions(options)
   const opts = options
+  const t = opts.transforms ?? {}
+  const progress = opts.onProgress
 
   enableLogger('Deob')
 
@@ -103,103 +113,145 @@ export async function deob(rawCode: string, options: Options = {}): Promise<Deob
 
   let outputCode = ''
 
-  const stages = [
-    // Format preprocessing
-    () => {
-      applyTransforms(
+  const stages: Stage[] = []
+
+  if (t.prepare !== false) {
+    stages.push({
+      name: 'Preparing code (block statements, sequences, variable splitting)',
+      key: 'prepare',
+      fn: () => applyTransforms(
         ast,
         [blockStatements, sequence, splitVariableDeclarations, varFunctions, rawLiterals],
         { name: 'prepare' },
-      )
-    },
-    // Locate decoders
-    async () => {
-      let stringArray: StringArray | undefined
-      let decoders: Decoder[] = []
-      let rotators: ArrayRotator[] = []
-      let setupCode: string = ''
+      ),
+    })
+  }
 
-      if (opts.decoderLocationMethod === 'stringArray') {
-        const { decoders: ds, rotators: r, stringArray: s, setupCode: scode } = findDecoderByArray(ast)
+  if (t.decodeStrings !== false) {
+    stages.push({
+      name: 'Locating and decoding strings',
+      key: 'decodeStrings',
+      fn: async () => {
+        let stringArray: StringArray | undefined
+        let decoders: Decoder[] = []
+        let rotators: ArrayRotator[] = []
+        let setupCode: string = ''
 
-        stringArray = s as any
-        rotators = r
-        decoders = collectDecoders(ast, ds.map(d => d.name))
-        setupCode = scode
-      }
-      else if (opts.decoderLocationMethod === 'callCount') {
-        const { decoders: ds, setupCode: scode } = findDecoderByCallCount(ast, opts.decoderCallCount)
-        decoders = collectDecoders(ast, ds.map(d => d.name))
-        setupCode = scode
-      }
-      else if (opts.decoderLocationMethod === 'evalCode') {
-        await evalCode(opts.sandbox!, opts.setupCode!)
-        decoders = collectDecoders(ast, opts.decoderNames!)
-      }
-
-      logger(`${stringArray ? `String Array: ${stringArray?.name} (Total ${stringArray?.length} items) Referenced ${stringArray?.references.length} times` : 'String Array not found'} | ${decoders.length ? `Decoder functions: ${decoders.map(d => d.name)}` : 'Decoder functions not found'}`)
-
-      await evalCode(opts.sandbox!, setupCode)
-
-      for (const decoder of decoders) {
-        applyTransform(
-          ast,
-          inlineDecoderWrappers,
-          decoder.path,
-        )
-      }
-
-      // Object reference replacement
-      applyTransform(ast, inlineObjectProps)
-
-      // Execute decoders
-      const map = await decodeStrings(opts.sandbox!, decoders as Decoder[])
-
-      if (map.size > 0) {
-        logger(buildDecryptionSummaryLog(map))
-      }
-
-      if (decoders.length > 0) {
-        if (stringArray?.path) {
-          stringArray.path.remove()
+        if (opts.decoderLocationMethod === 'stringArray') {
+          const { decoders: ds, rotators: r, stringArray: s, setupCode: scode } = findDecoderByArray(ast)
+          stringArray = s as any
+          rotators = r
+          decoders = collectDecoders(ast, ds.map(d => d.name))
+          setupCode = scode
         }
-        rotators.forEach(rotator => rotator.remove())
-        decoders.forEach(decoder => decoder.path.remove())
-      }
+        else if (opts.decoderLocationMethod === 'callCount') {
+          const { decoders: ds, setupCode: scode } = findDecoderByCallCount(ast, opts.decoderCallCount)
+          decoders = collectDecoders(ast, ds.map(d => d.name))
+          setupCode = scode
+        }
+        else if (opts.decoderLocationMethod === 'evalCode') {
+          await evalCode(opts.sandbox!, opts.setupCode!)
+          decoders = collectDecoders(ast, opts.decoderNames!)
+        }
 
-      return { changes: (map as any)?.size ?? decoders.length }
-    },
-    // Control flow flattening
-    () => applyTransforms(
-      ast,
-      [mergeStrings, deadCode, controlFlowObject, controlFlowSwitch],
-      { noScope: true },
-    ),
-    // unminify
-    () => applyTransforms(ast, [transpile, unminify]),
-    // Variable name optimization
-    () => applyTransform(ast, mangle, getMangleMatcher(opts)),
-    // Remove self-defending code
-    () => applyTransforms(
-      ast,
-      [
-        [selfDefending, debugProtection],
-      ].flat(),
-    ),
-    // Merge objects
-    () => applyTransforms(ast, [mergeObjectAssignments, evaluateGlobals]),
+        logger(`${stringArray ? `String Array: ${stringArray?.name} (Total ${stringArray?.length} items) Referenced ${stringArray?.references.length} times` : 'String Array not found'} | ${decoders.length ? `Decoder functions: ${decoders.map(d => d.name)}` : 'Decoder functions not found'}`)
 
-    opts.isMarkEnable && (() => {
-      logger(`Keyword list: [${opts.keywords.join(', ')}]`)
-      markKeyword(ast, opts.keywords)
-      return { changes: opts.keywords.length }
-    }),
+        await evalCode(opts.sandbox!, setupCode)
 
-    () => outputCode = generate(ast),
-  ].filter(Boolean) as (() => unknown)[]
+        for (const decoder of decoders) {
+          applyTransform(ast, inlineDecoderWrappers, decoder.path)
+        }
 
-  for (let i = 0; i < stages.length; i++) {
-    await stages[i]()
+        applyTransform(ast, inlineObjectProps)
+
+        const map = await decodeStrings(opts.sandbox!, decoders as Decoder[])
+
+        if (map.size > 0) {
+          logger(buildDecryptionSummaryLog(map))
+        }
+
+        if (decoders.length > 0) {
+          if (stringArray?.path) stringArray.path.remove()
+          rotators.forEach(rotator => rotator.remove())
+          decoders.forEach(decoder => decoder.path.remove())
+        }
+
+        return { changes: (map as any)?.size ?? decoders.length }
+      },
+    })
+  }
+
+  if (t.controlFlow !== false) {
+    stages.push({
+      name: 'Simplifying control flow',
+      key: 'controlFlow',
+      fn: () => applyTransforms(
+        ast,
+        [mergeStrings, deadCode, controlFlowObject, controlFlowSwitch],
+        { noScope: true },
+      ),
+    })
+  }
+
+  if (t.unminify !== false) {
+    stages.push({
+      name: 'Unminifying code',
+      key: 'unminify',
+      fn: () => applyTransforms(ast, [transpile, unminify]),
+    })
+  }
+
+  if (t.mangle !== false) {
+    stages.push({
+      name: 'Optimizing variable names',
+      key: 'mangle',
+      fn: () => applyTransform(ast, mangle, getMangleMatcher(opts)),
+    })
+  }
+
+  if (t.selfDefending !== false) {
+    stages.push({
+      name: 'Removing self-defending and debug protection',
+      key: 'selfDefending',
+      fn: () => applyTransforms(ast, [selfDefending, debugProtection]),
+    })
+  }
+
+  if (t.mergeObjects !== false) {
+    stages.push({
+      name: 'Merging objects and evaluating globals',
+      key: 'mergeObjects',
+      fn: () => applyTransforms(ast, [mergeObjectAssignments, evaluateGlobals]),
+    })
+  }
+
+  if (t.markKeywords !== false && opts.isMarkEnable) {
+    stages.push({
+      name: 'Marking keywords',
+      key: 'markKeywords',
+      fn: () => {
+        logger(`Keyword list: [${opts.keywords.join(', ')}]`)
+        markKeyword(ast, opts.keywords)
+        return { changes: opts.keywords.length }
+      },
+    })
+  }
+
+  stages.push({
+    name: 'Generating output code',
+    key: 'generate',
+    fn: () => { outputCode = generate(ast) },
+  })
+
+  const total = stages.length
+  for (let i = 0; i < total; i++) {
+    const stage = stages[i]
+    progress?.(stage.name, i + 1, total)
+    try {
+      await stage.fn()
+    } catch (err) {
+      throw handleError(err, rawCode, stage.name)
+    }
   }
 
   return {
@@ -237,7 +289,7 @@ function getMangleMatcher(options: Options): ((id: string) => boolean) | undefin
         return id => re.test(id)
       }
       catch {
-
+        // invalid regex, skip mangling
       }
     }
   }

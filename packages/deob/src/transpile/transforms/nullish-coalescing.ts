@@ -59,6 +59,17 @@ export default {
       right,
     )
 
+    // Flipped pattern: (tmp = left) == null ? right : tmp;
+    const flippedMatcher = m.conditionalExpression(
+      m.binaryExpression(
+        '==',
+        m.assignmentExpression('=', tmpVar, left),
+        m.nullLiteral(),
+      ),
+      right,
+      m.fromCapture(tmpVar),
+    )
+
     const iifeMatcher = m.callExpression(
       m.arrowFunctionExpression(
         [m.fromCapture(tmpVar)],
@@ -102,6 +113,16 @@ export default {
             this.changes++
           }
           else if (simpleIdMatcher.match(path.node)) {
+            path.replaceWith(
+              t.logicalExpression('??', left.current!, right.current!),
+            )
+            this.changes++
+          }
+          else if (flippedMatcher.match(path.node)) {
+            const binding = path.scope.getBinding(tmpVar.current!.name)
+            if (!isTemporaryVariable(binding, 1)) return
+
+            binding.path.remove()
             path.replaceWith(
               t.logicalExpression('??', left.current!, right.current!),
             )

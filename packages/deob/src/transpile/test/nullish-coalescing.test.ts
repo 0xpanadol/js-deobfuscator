@@ -57,8 +57,8 @@ test('default param (Babel)', () =>
     function bar(bar, qux = bar ?? "qux") {}
   `))
 
-// TODO: add unminify transform or different matchers?
-test.todo('flipped', () =>
+// Flipped pattern: (tmp = left) == null ? right : tmp
+test('flipped', () =>
   expectJS(`
     var interp;
     (interp = hello) == null ? "" : interp;

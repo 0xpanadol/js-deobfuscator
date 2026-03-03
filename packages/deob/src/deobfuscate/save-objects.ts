@@ -37,6 +37,7 @@ export function saveObjects(ast: t.Node) {
   }[] = []
 
   const objects: Objects = {}
+  const objectInitialLengths: Record<string, number> = {}
 
   traverse(ast, {
     VariableDeclaration: {
@@ -100,17 +101,18 @@ export function saveObjects(ast: t.Node) {
         if (!(binding && binding.path.node.type === 'VariableDeclarator' && binding.path.node.init?.type === 'ObjectExpression')) return
         if (!binding.constant && binding.constantViolations.length === 0) return
 
-        // Also determine the member length of object initialization (avoid unnecessary replacement), usually empty {}
-        // !!! But the length of the original object will be changed when filling later, a cache may be needed here
-        // if (binding.path.node.init.properties.length !== 0)
-        //   return
+        // Also determine the member length of object initialization (avoid unnecessary replacement)
+        // Cache the initial property count to avoid issues when properties are added during traversal
+        const start = binding.identifier.start
+        const initialLengthKey = `${start}_${objectName}_initLen`
+        if (!(initialLengthKey in objectInitialLengths)) {
+          objectInitialLengths[initialLengthKey] = binding.path.node.init.properties.length
+        }
 
         parents.push({
           parentPath: path.getStatementParent()!.parentPath,
           objectName,
         })
-
-        const start = binding.identifier.start
 
         let isReplace = false
         try {

@@ -2,6 +2,17 @@ import type { Sandbox } from './deobfuscate/vm'
 import { createBrowserSandbox, createNodeSandbox } from './deobfuscate/vm'
 import { isBrowser } from './utils/platform'
 
+export interface TransformToggles {
+  prepare?: boolean
+  decodeStrings?: boolean
+  controlFlow?: boolean
+  unminify?: boolean
+  mangle?: boolean
+  selfDefending?: boolean
+  mergeObjects?: boolean
+  markKeywords?: boolean
+}
+
 export interface Options {
   /** Decoder location method */
   decoderLocationMethod?: 'callCount' | 'stringArray' | 'evalCode'
@@ -24,9 +35,15 @@ export interface Options {
   mangleFlags?: string
   /** Sandbox */
   sandbox?: Sandbox
+
+  /** Selective transform toggles */
+  transforms?: TransformToggles
+
+  /** Progress callback for reporting stage progress */
+  onProgress?: (stage: string, index: number, total: number) => void
 }
 
-export const defaultOptions: Required<Options> = {
+export const defaultOptions: Required<Omit<Options, 'onProgress'>> & { onProgress?: Options['onProgress'] } = {
   decoderLocationMethod: 'stringArray',
   decoderCallCount: 150,
   setupCode: '',
@@ -39,12 +56,29 @@ export const defaultOptions: Required<Options> = {
   manglePattern: '',
   mangleFlags: '',
   sandbox: isBrowser() ? createBrowserSandbox() : createNodeSandbox(),
+
+  transforms: {
+    prepare: true,
+    decodeStrings: true,
+    controlFlow: true,
+    unminify: true,
+    mangle: true,
+    selfDefending: true,
+    mergeObjects: true,
+    markKeywords: true,
+  },
+
+  onProgress: undefined,
 }
 
 export function mergeOptions(options: Options): asserts options is Required<Options> {
-  const mergedOptions: Required<Options> = {
+  const mergedOptions = {
     ...defaultOptions,
     ...options,
+    transforms: {
+      ...defaultOptions.transforms,
+      ...options.transforms,
+    },
   }
   // backward compatibility: boolean mangle -> mode
   if (!options.mangleMode && typeof (options as any).mangle === 'boolean') {

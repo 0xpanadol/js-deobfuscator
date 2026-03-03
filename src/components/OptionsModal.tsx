@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react'
 import { useStore } from '../store/useStore'
-import { defaultOptions } from '../types/options'
+import { defaultOptions, defaultTransformToggles } from '../types/options'
+import type { TransformToggles } from '../types/options'
 import Tooltip from './Tooltip'
 
 interface OptionsModalProps {
@@ -22,6 +23,17 @@ const mangleModes = [
   { value: 'custom', label: 'Custom Regex' },
 ] as const
 
+const transformLabels: Record<keyof TransformToggles, { label: string; tip: string }> = {
+  prepare: { label: 'Prepare', tip: 'Block statements, sequences, variable splitting' },
+  decodeStrings: { label: 'Decode Strings', tip: 'Locate and decode obfuscated strings' },
+  controlFlow: { label: 'Control Flow', tip: 'Simplify control flow flattening (objects + switch)' },
+  unminify: { label: 'Unminify', tip: 'Transpile and unminify code for readability' },
+  mangle: { label: 'Mangle', tip: 'Optimize variable names based on mangle mode' },
+  selfDefending: { label: 'Self-Defending', tip: 'Remove self-defending and debug protection code' },
+  mergeObjects: { label: 'Merge Objects', tip: 'Merge object assignments and evaluate globals' },
+  markKeywords: { label: 'Mark Keywords', tip: 'Highlight specified keywords in output' },
+}
+
 export default function OptionsModal({ open, onClose }: OptionsModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const { options, setOptions, updateOption } = useStore()
@@ -40,12 +52,17 @@ export default function OptionsModal({ open, onClose }: OptionsModalProps) {
   const resetOptions = () => {
     if (!window.confirm('Are you sure you want to restore default settings? Modified settings will be reset.')) return
     const { setupCode: _, ...rest } = defaultOptions
-    setOptions({ ...rest, setupCode: '' })
+    setOptions({ ...rest, setupCode: '', transforms: { ...defaultTransformToggles } })
   }
 
   const keywordsStr = options.keywords.join(', ')
   const setKeywords = (v: string) => {
     updateOption('keywords', v.split(',').map(s => s.trim()).filter(Boolean))
+  }
+
+  const toggleTransform = (key: keyof TransformToggles) => {
+    const transforms = { ...options.transforms, [key]: !options.transforms[key] }
+    updateOption('transforms', transforms)
   }
 
   return (
@@ -58,7 +75,7 @@ export default function OptionsModal({ open, onClose }: OptionsModalProps) {
       <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5 sm:py-4">
         <div className="min-w-0">
           <p className="text-sm sm:text-base font-semibold text-zinc-900 dark:text-zinc-50">Deobfuscation Configuration</p>
-          <p className="text-[11px] sm:text-xs text-zinc-500 dark:text-zinc-400">Keep it lightweight, only expose core options.</p>
+          <p className="text-[11px] sm:text-xs text-zinc-500 dark:text-zinc-400">Core options and transform toggles.</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
@@ -135,6 +152,33 @@ export default function OptionsModal({ open, onClose }: OptionsModalProps) {
           )}
         </div>
 
+        {/* Selective Transforms */}
+        <div className="space-y-2 rounded-lg border border-zinc-200/80 bg-white/80 px-3 py-3 shadow-sm dark:border-zinc-800/70 dark:bg-zinc-900/70">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Transform Stages</span>
+            <Tooltip text="Toggle individual deobfuscation stages on/off. Useful for debugging or when specific transforms cause issues.">
+              <span className="cursor-help text-zinc-400">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+            </Tooltip>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(Object.keys(transformLabels) as (keyof TransformToggles)[]).map(key => (
+              <label key={key} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer" title={transformLabels[key].tip}>
+                <input
+                  type="checkbox"
+                  checked={options.transforms[key]}
+                  onChange={() => toggleTransform(key)}
+                  className="h-3.5 w-3.5 rounded border-zinc-300 text-amber-500 focus:ring-amber-400 dark:border-zinc-600 dark:bg-zinc-800"
+                />
+                <span className="text-[11px] font-medium">{transformLabels[key].label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {/* Keyword Marking */}
         <div className="space-y-2 rounded-lg border border-zinc-200/80 bg-white/80 px-3 py-3 shadow-sm dark:border-zinc-800/70 dark:bg-zinc-900/70">
           <div className="flex items-center gap-2">
@@ -206,6 +250,7 @@ export default function OptionsModal({ open, onClose }: OptionsModalProps) {
             </div>
           )}
         </div>
+
         {/* Multi-Pass */}
         <div className="space-y-2 rounded-lg border border-zinc-200/80 bg-white/80 px-3 py-3 shadow-sm dark:border-zinc-800/70 dark:bg-zinc-900/70">
           <div className="flex items-center justify-between gap-3">

@@ -6,6 +6,7 @@ import SourceCodeEditor from './components/SourceCodeEditor'
 import DeobfuscatorOutput from './components/DeobfuscatorOutput'
 import ShortcutsBar from './components/ShortcutsBar'
 import Toasts from './components/Toasts'
+import ShortcutsOverlay from './components/ShortcutsOverlay'
 
 function useIsMobile(breakpoint = 768) {
   const [mobile, setMobile] = useState(window.innerWidth < breakpoint)
@@ -46,6 +47,7 @@ export default function App() {
       </div>
       {!isMobile && <ShortcutsBar />}
       <Toasts />
+      <ShortcutsOverlay />
     </main>
   )
 }

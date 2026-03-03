@@ -3,6 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -14,7 +16,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Build deob package
+        run: npm run build
+        working-directory: packages/deob
+
+      - name: Lint
+        run: npm run lint
+        working-directory: packages/deob
+        continue-on-error: true
+
+      - name: Run tests
+        run: npx vitest --run --pool=vmThreads
+        working-directory: packages/deob
+
   build:
+    needs: lint-and-test
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +62,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
