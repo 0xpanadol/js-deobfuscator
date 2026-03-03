@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html, body, #root {
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Toast slide-in animation */
+.animate-in {
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Allotment sash styling */
+.sash-module_sash_lbLaws {
+  background: transparent !important;
+}
+.sash-module_sash_lbLaws:hover,
+.sash-module_sash_lbLaws:active {
+  background: rgba(245, 158, 11, 0.25) !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.5);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(82, 82, 91, 0.5);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(82, 82, 91, 0.7);
+}

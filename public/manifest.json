@@ -1,0 +1,12 @@
+{
+  "name": "JS Deobfuscator",
+  "short_name": "JS Deob",
+  "description": "Automated JS deobfuscator based on Babel AST. Turn obfuscated JavaScript into clean, readable code.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#fffbeb",
+  "theme_color": "#f59e0b",
+  "icons": [
+    { "src": "./logo.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

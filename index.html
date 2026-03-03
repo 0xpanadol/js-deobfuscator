@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JS Deobfuscator - Online JS Deobfuscator Tool</title>
+    <meta name="description" content="Automated JS deobfuscator based on Babel AST. Turn obfuscated JavaScript into clean, readable code in seconds." />
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="theme-color" content="#f59e0b" />
+  </head>
+  <body>
+    <script>
+      (function() {
+        var d = localStorage.getItem('js-deobfuscator:dark');
+        if (d === 'true' || (d === null && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

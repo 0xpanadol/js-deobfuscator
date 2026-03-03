@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+.env
+.env.*
+*.log
+packages/deob/dist/
+packages/deob/node_modules/
