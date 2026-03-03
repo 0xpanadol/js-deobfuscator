@@ -2,7 +2,7 @@
 
 A browser-based JavaScript deobfuscator. Paste obfuscated code, hit run, get readable output. No server, no uploads, everything runs locally in your browser.
 
-![screenshot](https://raw.githubusercontent.com/0xpanadol/js-deobfuscator/main/deob-ui.png)
+![screenshot](https://raw.githubusercontent.com/0xpanadol/js-deobfuscator/main/screenshot.png)
 
 ## Why?
 
