@@ -86,3 +86,75 @@ export function renameParameters(
     renameFast(binding, newNames[i])
   }
 }
+
+/**
+ * Batch rename that skips expensive conflict resolution.
+ * Only safe when all newNames are pre-computed to be unique (no collisions).
+ */
+export function renameFastUnsafe(binding: Binding, newName: string): void {
+  const oldName = binding.identifier.name
+
+  binding.referencePaths.forEach((ref) => {
+    if (ref.isExportDefaultDeclaration()) return
+    if (!ref.isIdentifier()) {
+      throw new Error(
+        `Unexpected reference (${ref.type}): ${codePreview(ref.node)}`,
+      )
+    }
+    ref.node.name = newName
+  })
+
+  const patternMatcher = m.assignmentExpression(
+    '=',
+    m.or(m.arrayPattern(), m.objectPattern()),
+  )
+  binding.constantViolations.forEach((ref) => {
+    if (ref.isAssignmentExpression() && t.isIdentifier(ref.node.left)) {
+      ref.node.left.name = newName
+    }
+    else if (ref.isUpdateExpression() && t.isIdentifier(ref.node.argument)) {
+      ref.node.argument.name = newName
+    }
+    else if (
+      ref.isUnaryExpression({ operator: 'delete' })
+      && t.isIdentifier(ref.node.argument)
+    ) {
+      ref.node.argument.name = newName
+    }
+    else if (ref.isVariableDeclarator() && t.isIdentifier(ref.node.id)) {
+      ref.node.id.name = newName
+    }
+    else if (ref.isVariableDeclarator() && t.isArrayPattern(ref.node.id)) {
+      const ids = ref.getBindingIdentifiers()
+      for (const id in ids) {
+        if (id === oldName) {
+          ids[id].name = newName
+        }
+      }
+    }
+    else if (ref.isFor() || patternMatcher.match(ref.node)) {
+      traverse(ref.node, {
+        Identifier(path) {
+          if (path.scope !== ref.scope) return path.skip()
+          if (path.node.name === oldName) {
+            path.node.name = newName
+          }
+        },
+        noScope: true,
+      })
+    }
+    else if (ref.isFunctionDeclaration() && t.isIdentifier(ref.node.id)) {
+      ref.node.id.name = newName
+    }
+    else {
+      throw new Error(
+        `Unexpected constant violation (${ref.type}): ${codePreview(ref.node)}`,
+      )
+    }
+  })
+
+  binding.scope.removeOwnBinding(oldName)
+  binding.scope.bindings[newName] = binding
+  binding.identifier.name = newName
+}
+
